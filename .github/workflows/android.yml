@@ -1,0 +1,74 @@
+name: Build APK
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  apk:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Android SDK (preinstalowany) - licencje i pakiety
+        run: |
+          SDKM="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDKM" --licenses > /dev/null || true
+          "$SDKM" "platforms;android-34" "build-tools;34.0.0"
+
+      - name: Załataj index.html (pulpit 1-ekranowy + SPP)
+        run: |
+          if [ -f "tools/patch-index.py" ]; then
+            python3 tools/patch-index.py www/index.html
+          fi
+
+      - run: npm install --no-audit --no-fund
+
+      - name: Dodaj moduł głosowy (GPS + mapa + głos)
+        run: |
+          if [ -f "tools/patch-voice.py" ]; then
+            python3 tools/patch-voice.py www/index.html
+          fi
+
+      - name: Dodaj moduł układu (znak limitu, motyw dzień/noc)
+        run: |
+          if [ -f "tools/patch-layout.py" ]; then
+            python3 tools/patch-layout.py www/index.html
+          fi
+
+      - name: Dodaj platformę Android
+        run: npx cap add android
+
+      - name: Ikona aplikacji (jeśli dostępny katalog assets)
+        run: |
+          if [ -d "assets" ] || [ -d "resources" ]; then
+            npx @capacitor/assets generate --android --iconBackgroundColor '#050a08' --iconBackgroundColorDark '#050a08' || true
+          fi
+
+      - name: Uprawnienia Bluetooth w manifeście
+        run: python3 tools/patch-manifest.py
+
+      - run: npx cap sync android
+
+      - name: Poprawka kompatybilności Gradle dla wtyczek Cordova
+        run: |
+          if [ -f "android/capacitor-cordova-android-plugins/build.gradle" ]; then
+            sed -i 's/compile /implementation /g' android/capacitor-cordova-android-plugins/build.gradle || true
+          fi
+
+      - name: Build debug APK
+        working-directory: android
+        run: chmod +x ./gradlew && ./gradlew assembleDebug --no-daemon
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rapid-obd-debug
+          path: android/app/build/outputs/apk/debug/app-debug.apk
