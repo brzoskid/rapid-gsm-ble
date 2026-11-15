@@ -1,0 +1,7 @@
+{
+  "appId": "pl.twojanazwa.rapidobd",
+  "appName": "RAPID OBD",
+  "webDir": "www",
+  "backgroundColor": "#050a08",
+  "android": { "allowMixedContent": false }
+}
